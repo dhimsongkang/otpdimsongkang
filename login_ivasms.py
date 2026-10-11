@@ -27,23 +27,18 @@ async def main():
     print("=" * 60)
 
     async with async_playwright() as p:
-        launch_kwargs = {
-            "user_data_dir": USER_DATA_DIR,
-            "headless": False if os.name == "nt" or os.environ.get("HEADLESS", "false").lower() == "false" else True,
-            "args": [
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-gpu"
-            ]
-        }
-        if os.name == "nt":
-            launch_kwargs["channel"] = "msedge"
-
-        context = await p.chromium.launch_persistent_context(**launch_kwargs)
+        # Buka Firefox / Chromium terlihat (headless=False)
+        browser_type = p.firefox
+        context = await browser_type.launch_persistent_context(
+            user_data_dir=USER_DATA_DIR,
+            headless=False,
+            args=["--no-sandbox"]
+        )
         page = context.pages[0] if context.pages else await context.new_page()
         await page.goto("https://www.ivasms.com/login")
 
         print("\n⏳ Menunggu Anda login di browser...")
+        print("💡 Silakan centang Cloudflare dan login dengan email & password Anda di jendela browser yang terbuka.")
         
         # Loop sampai user berada di halaman portal/sms/received atau portal
         while True:
