@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches & Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Browser profile & personal browser data (VERY IMPORTANT: JANGAN PUSH DATA BROWSER LOKAL)
+browser_profile/
+*.session
+
+# Logs
+*.log
+bot.log
+
+# Temporary debug files
+debug_*.html
+debug_*.png
+test_*.png
+
+# OS generated
+Thumbs.db
+.DS_Store
