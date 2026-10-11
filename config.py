@@ -38,6 +38,9 @@ IVASMS_PASSWORD = "scorpion998"
 # Endpoint halaman SMS Received
 IVASMS_SMS_ENDPOINT = "/portal/sms/received"
 
+# YesCaptcha Client Key untuk bypass Cloudflare Turnstile
+YESCAPTCHA_KEY = "b2a81640d7b006b1d5c15459ec72366b442af456139860"
+
 # Interval polling dalam detik (10 detik agar tidak terkena rate limit IVASMS)
 POLL_INTERVAL = 10
 

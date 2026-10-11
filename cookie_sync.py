@@ -7,23 +7,66 @@
 import asyncio
 import logging
 import os
+import aiohttp
 from playwright.async_api import async_playwright
-from config import IVASMS_EMAIL, IVASMS_PASSWORD
+from config import IVASMS_EMAIL, IVASMS_PASSWORD, YESCAPTCHA_KEY
 
 logger = logging.getLogger(__name__)
 USER_DATA_DIR = os.path.abspath("browser_profile")
 
 
+async def solve_turnstile(website_url: str, website_key: str) -> str:
+    """Solve Cloudflare Turnstile challenge using YesCaptcha API"""
+    if not YESCAPTCHA_KEY:
+        return ""
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Create task
+            task_data = {
+                "clientKey": YESCAPTCHA_KEY,
+                "task": {
+                    "type": "TurnstileTaskProxyless",
+                    "websiteURL": website_url,
+                    "websiteKey": website_key,
+                }
+            }
+            async with session.post("https://api.yescaptcha.com/createTask", json=task_data, timeout=15) as resp:
+                res = await resp.json()
+                if res.get("errorId") != 0:
+                    logger.error(f"❌ YesCaptcha createTask error: {res.get('errorDescription')}")
+                    return ""
+                task_id = res.get("taskId")
+
+            logger.info(f"🧩 YesCaptcha Task created: {task_id}, awaiting solution...")
+
+            # Poll result
+            for _ in range(30):
+                await asyncio.sleep(2)
+                async with session.post("https://api.yescaptcha.com/getTaskResult", json={"clientKey": YESCAPTCHA_KEY, "taskId": task_id}, timeout=15) as resp:
+                    r = await resp.json()
+                    if r.get("status") == "ready":
+                        token = r.get("solution", {}).get("token", "")
+                        logger.info("🎉 YesCaptcha Turnstile SOLVED!")
+                        return token
+                    elif r.get("errorId") != 0:
+                        logger.error(f"❌ YesCaptcha getTaskResult error: {r.get('errorDescription')}")
+                        return ""
+    except Exception as e:
+        logger.error(f"YesCaptcha error: {e}")
+    return ""
+
+
 async def get_fresh_cookies_from_browser() -> dict:
     """
-    Buka session browser Edge headless:
+    Buka session browser Playwright:
     1. Jika session masih valid -> ambil cookies segar (cf_clearance, dsb).
     2. Jika ter-logout (/login) -> otomatis login ulang dengan email & password + centang remember me!
+    3. Jika tertahan Cloudflare Turnstile -> otomatis di-solve oleh YesCaptcha!
     """
     cookies_dict = {}
     try:
         async with async_playwright() as p:
-            # Stealth settings to bypass Cloudflare Just a moment
+            # Stealth settings
             launch_kwargs = {
                 "user_data_dir": USER_DATA_DIR,
                 "headless": os.name != "nt" or os.environ.get("HEADLESS", "false").lower() == "true",
@@ -50,7 +93,6 @@ async def get_fresh_cookies_from_browser() -> dict:
                 });
             """)
 
-            # Buka halaman login langsung jika belum ada session
             target_url = "https://www.ivasms.com/portal/sms/received"
             try:
                 await page.goto(target_url, timeout=45000, wait_until="load")
@@ -60,11 +102,28 @@ async def get_fresh_cookies_from_browser() -> dict:
             logger.info(f"Page loaded: {page.url} | Title: {await page.title()}")
 
             # Tunggu bypass Cloudflare jika muncul 'Just a moment...'
-            for i in range(15):
+            for i in range(25):
                 t = await page.title()
                 if "Just a moment" not in t:
                     break
-                logger.info(f"⏳ Cloudflare challenge terdeteksi, menunggu... ({i+1}/15)")
+
+                # Deteksi Turnstile widget di halaman
+                turnstile_container = await page.query_selector("[data-sitekey]")
+                if turnstile_container and YESCAPTCHA_KEY:
+                    sitekey = await turnstile_container.get_attribute("data-sitekey")
+                    logger.info(f"🔍 Turnstile SiteKey terdeteksi: {sitekey}")
+                    token = await solve_turnstile(page.url, sitekey)
+                    if token:
+                        await page.evaluate(f"""
+                            const input = document.querySelector('[name="cf-turnstile-response"]');
+                            if (input) {{ input.value = '{token}'; }}
+                            const form = document.querySelector('form');
+                            if (form) {{ form.submit(); }}
+                        """)
+                        await asyncio.sleep(4)
+                        break
+
+                logger.info(f"⏳ Cloudflare challenge terdeteksi, menunggu... ({i+1}/25)")
                 await asyncio.sleep(1)
 
             curr_url = page.url
