@@ -15,20 +15,24 @@ logger = logging.getLogger(__name__)
 USER_DATA_DIR = os.path.abspath("browser_profile")
 
 
-async def solve_turnstile(website_url: str, website_key: str) -> str:
+async def solve_turnstile(website_url: str, website_key: str, action: str = "") -> str:
     """Solve Cloudflare Turnstile challenge using YesCaptcha API"""
     if not YESCAPTCHA_KEY:
         return ""
     try:
         async with aiohttp.ClientSession() as session:
             # Create task
+            task_payload = {
+                "type": "TurnstileTaskProxyless",
+                "websiteURL": website_url,
+                "websiteKey": website_key,
+            }
+            if action:
+                task_payload["action"] = action
+
             task_data = {
                 "clientKey": YESCAPTCHA_KEY,
-                "task": {
-                    "type": "TurnstileTaskProxyless",
-                    "websiteURL": website_url,
-                    "websiteKey": website_key,
-                }
+                "task": task_payload
             }
             async with session.post("https://api.yescaptcha.com/createTask", json=task_data, timeout=15) as resp:
                 res = await resp.json()
@@ -180,36 +184,48 @@ async def get_fresh_cookies_from_browser() -> dict:
             if "/login" in curr_url or email_field:
                 logger.info("🔑 Menjalankan auto-login IVASMS...")
                 try:
-                    if email_field:
-                        await email_field.fill(IVASMS_EMAIL)
-                    else:
-                        await page.fill("input[name='email']", IVASMS_EMAIL)
-                    await page.fill("input[name='password']", IVASMS_PASSWORD)
+                    sitekey = "0x4AAAAAACqVmW6ncA-jc10z"
+                    for f in page.frames:
+                        if "turnstile" in f.url:
+                            import re
+                            m = re.search(r"sitekey=([^&]+)", f.url) or re.search(r"k=([^&]+)", f.url)
+                            if m:
+                                sitekey = m.group(1)
+                                break
 
-                    # Centang Remember Me
-                    remember_cb = await page.query_selector("input[name='remember']")
-                    if remember_cb and not await remember_cb.is_checked():
-                        await remember_cb.check()
+                    token = ""
+                    if YESCAPTCHA_KEY:
+                        logger.info(f"🧩 Solving Turnstile for login with action='login' (Sitekey: {sitekey})...")
+                        token = await solve_turnstile("https://www.ivasms.com/login", sitekey, action="login")
 
-                    await asyncio.sleep(1)
+                    # Submit via AJAX form fetch inside page session
+                    login_resp = await page.evaluate("""
+                        async ({email, password, token}) => {
+                            const tokenInput = document.querySelector('input[name="_token"]');
+                            const csrf = tokenInput ? tokenInput.value : '';
+                            const formData = new FormData();
+                            formData.append('_token', csrf);
+                            formData.append('email', email);
+                            formData.append('password', password);
+                            formData.append('remember', 'on');
+                            if (token) formData.append('cf-turnstile-response', token);
+                            const resp = await fetch('https://www.ivasms.com/login', {
+                                method: 'POST',
+                                body: formData,
+                                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                            });
+                            return { status: resp.status };
+                        }
+                    """, {"email": IVASMS_EMAIL, "password": IVASMS_PASSWORD, "token": token})
 
-                    # Submit login
-                    submit_btn = await page.query_selector("button[type='submit']")
-                    if submit_btn:
-                        await submit_btn.click()
-                    else:
-                        await page.keyboard.press("Enter")
+                    logger.info(f"Login POST status: {login_resp.get('status')}")
 
-                    # Tunggu sampai berhasil masuk ke dashboard / portal
-                    for i in range(20):
+                    await page.goto("https://www.ivasms.com/portal/sms/received", timeout=25000)
+                    for i in range(15):
                         await asyncio.sleep(1)
                         if "/portal" in page.url:
                             logger.info("🎉 Auto-login BERHASIL masuk ke portal!")
                             break
-
-                    if "/portal/sms/received" not in page.url:
-                        await page.goto("https://www.ivasms.com/portal/sms/received", timeout=20000)
-                        await asyncio.sleep(2)
 
                 except Exception as login_err:
                     logger.error(f"Error during auto-login: {login_err}")
