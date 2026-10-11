@@ -456,19 +456,20 @@ async def post_init(application: Application):
             logger.warning(f"Browser sync skipped: {e}")
 
     # Mark existing SMS as seen untuk IVASMS
-    if conn_ok or (COOKIES and "ivas_sms_session" in COOKIES):
+    try:
         if conn_ok:
             logger.info("✅ IVASMS connection verified!")
+            try:
+                existing_count = active_client.mark_initial_as_seen()
+                logger.info(f"📌 [IVASMS] Skipping {existing_count} existing SMS")
+            except Exception as ex:
+                logger.warning(f"Could not fetch initial IVASMS SMS: {ex}")
         else:
-            logger.info("⚠️ IVASMS session loaded from config.py!")
-        try:
-            existing_count = active_client.mark_initial_as_seen()
-            logger.info(f"📌 [IVASMS] Skipping {existing_count} existing SMS")
-        except Exception as ex:
-            logger.warning(f"Could not fetch initial IVASMS SMS: {ex}")
+            logger.warning("⚠️ IVASMS session expired/belum login. Bot tetap berjalan & akan auto-sync!")
+
         asyncio.create_task(poll_otp(application.bot, active_client, GROUP_CHAT_ID))
-    else:
-        logger.warning("⚠️ IVASMS connection not ready.")
+    except Exception as iva_init_err:
+        logger.error(f"⚠️ Error preparing IVASMS poller: {iva_init_err}")
 
     # Inisialisasi Elite-SMS Client (Multi-Provider)
     if ELITE_SMS_ENABLED and ELITE_SMS_API_KEY:
