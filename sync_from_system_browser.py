@@ -14,24 +14,36 @@ def get_firefox_cookies():
     
     # Path profil Firefox & Cachy-browser di Linux & Windows
     potential_paths = [
-        # Linux Firefox
         os.path.expanduser("~/.mozilla/firefox/*"),
-        # Linux Cachy-browser / Librewolf
+        os.path.expanduser("~/.cachy-browser/*"),
         os.path.expanduser("~/.cachy/browser/*"),
         os.path.expanduser("~/.librewolf/*"),
-        # Windows
-        os.path.expandvars(r"%APPDATA%\Mozilla\Firefox\Profiles\*"),
+        os.path.expanduser("~/.config/cachy-browser/*"),
+        os.path.expanduser("~/.config/librewolf/*"),
+        os.path.expanduser("~/.config/google-chrome/*"),
+        os.path.expanduser("~/.config/chromium/*"),
     ]
     
     db_paths = []
+    # 1. Cek folder profil yang umum
     for p in potential_paths:
         for profile in glob.glob(p):
-            cookie_db = os.path.join(profile, "cookies.sqlite")
-            if os.path.exists(cookie_db):
-                db_paths.append(cookie_db)
-                
+            for filename in ["cookies.sqlite", "Cookies"]:
+                cookie_db = os.path.join(profile, filename)
+                if os.path.exists(cookie_db):
+                    db_paths.append(cookie_db)
+
+    # 2. Jika belum ketemu, lakukan pencarian otomatis di folder ~/.mozilla & ~/.cachy
     if not db_paths:
-        print("❌ Tidak ditemukan file cookies.sqlite browser Firefox/Cachy.")
+        for root_dir in [os.path.expanduser("~/.mozilla"), os.path.expanduser("~/.cachy"), os.path.expanduser("~/.config")]:
+            if os.path.exists(root_dir):
+                for root, dirs, files in os.walk(root_dir):
+                    if "cookies.sqlite" in files:
+                        db_paths.append(os.path.join(root, "cookies.sqlite"))
+
+    if not db_paths:
+        print("❌ Tidak ditemukan file database cookies browser di home folder.")
+        print("💡 Tips: Pastikan browser tempat Anda login sudah dibuka setidaknya sekali.")
         return {}
 
     temp_db = "temp_cookies.sqlite"
