@@ -402,18 +402,30 @@ async def post_init(application: Application):
     active_client = IVASMSClient(COOKIES, IVASMS_URL)
 
     # Cek koneksi, jika gagal coba auto-sync dari browser profile
-    if not active_client.check_connection():
+    conn_ok = active_client.check_connection()
+    if not conn_ok:
         logger.info("🔄 Checking fresh cookies from browser profile...")
-        fresh_c = await get_fresh_cookies_from_browser()
-        if fresh_c:
-            active_client.update_cookies(fresh_c)
+        try:
+            fresh_c = await get_fresh_cookies_from_browser()
+            if fresh_c:
+                active_client.update_cookies(fresh_c)
+                conn_ok = active_client.check_connection()
+        except Exception as e:
+            logger.warning(f"Browser sync skipped: {e}")
 
-    if active_client.check_connection():
-        logger.info("✅ IVASMS connection verified!")
+    # Selalu jalankan bot jika COOKIES ada di config.py
+    if conn_ok or (COOKIES and "ivas_sms_session" in COOKIES):
+        if conn_ok:
+            logger.info("✅ IVASMS connection verified!")
+        else:
+            logger.info("⚠️ IVASMS session loaded from config.py! Memulai bot polling...")
 
-        # Mark existing SMS as seen (jangan kirim ulang OTP lama)
-        existing_count = active_client.mark_initial_as_seen()
-        logger.info(f"📌 Skipping {existing_count} existing SMS")
+        # Mark existing SMS as seen
+        try:
+            existing_count = active_client.mark_initial_as_seen()
+            logger.info(f"📌 Skipping {existing_count} existing SMS")
+        except Exception as ex:
+            logger.warning(f"Could not fetch initial SMS: {ex}")
 
         # Kirim pesan startup ke grup
         try:
