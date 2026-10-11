@@ -62,6 +62,28 @@ async def main():
                 print("Menyimpan sesi login...")
                 await page.goto("https://www.ivasms.com/portal/sms/received")
                 await asyncio.sleep(3)
+                
+                # Ekstrak cookies dan perbarui config.py otomatis
+                raw_cookies = await context.cookies()
+                cookies_dict = {}
+                for c in raw_cookies:
+                    if "ivasms.com" in c.get("domain", ""):
+                        cookies_dict[c["name"]] = c["value"]
+                
+                if "ivas_sms_session" in cookies_dict:
+                    import re
+                    cfg_path = os.path.join(os.path.dirname(__file__), "config.py")
+                    with open(cfg_path, "r", encoding="utf-8") as f:
+                        cfg_text = f.read()
+                    cookie_str = "COOKIES = {\n"
+                    for k, v in cookies_dict.items():
+                        cookie_str += f'    "{k}": "{v}",\n'
+                    cookie_str += "}"
+                    cfg_text = re.sub(r"COOKIES\s*=\s*\{[^}]*\}", cookie_str, cfg_text)
+                    with open(cfg_path, "w", encoding="utf-8") as f:
+                        f.write(cfg_text)
+                    print("💾 config.py otomatis diperbarui dengan cookies Edge!")
+
                 print("🎉 Sesi login tersimpan permanen di folder 'browser_profile'!")
                 break
         

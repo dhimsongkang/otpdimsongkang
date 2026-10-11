@@ -213,6 +213,24 @@ async def get_fresh_cookies_from_browser() -> dict:
             await context.close()
 
         logger.info(f"🔄 Auto-synced {len(cookies_dict)} cookies from browser profile!")
+        
+        # Simpan otomatis cookie segar ke config.py
+        if "ivas_sms_session" in cookies_dict:
+            try:
+                import re
+                cfg_path = os.path.join(os.path.dirname(__file__), "config.py")
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    cfg_text = f.read()
+                cookie_str = "COOKIES = {\n"
+                for k, v in cookies_dict.items():
+                    cookie_str += f'    "{k}": "{v}",\n'
+                cookie_str += "}"
+                cfg_text = re.sub(r"COOKIES\s*=\s*\{[^}]*\}", cookie_str, cfg_text)
+                with open(cfg_path, "w", encoding="utf-8") as f:
+                    f.write(cfg_text)
+                logger.info("💾 Updated fresh cookies into config.py successfully!")
+            except Exception as save_err:
+                logger.warning(f"Failed to auto-save to config.py: {save_err}")
     except Exception as e:
         logger.error(f"❌ Failed to auto-sync cookies: {e}")
 
