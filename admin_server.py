@@ -248,12 +248,27 @@ def check_bot_running():
 
 
 async def check_ivasms_connection():
-    """Check IVASMS connection via browser cookies"""
+    """Check IVASMS connection via config cookies and fallback to browser"""
     global ivasms_status
     try:
+        from ivasms_scraper import IVASMSClient
+        from config import COOKIES, IVASMS_URL
+        client = IVASMSClient(COOKIES, IVASMS_URL)
+        if client.check_connection():
+            ivasms_status["connected"] = True
+            ivasms_status["last_check"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ivasms_status["cookies_valid"] = True
+            return ivasms_status
+
+        # If not connected, try browser auto-sync
         from cookie_sync import get_fresh_cookies_from_browser
         cookies = await get_fresh_cookies_from_browser()
-        ivasms_status["connected"] = bool(cookies and "ivas_sms_session" in cookies)
+        if cookies and "ivas_sms_session" in cookies:
+            client.update_cookies(cookies)
+            ivasms_status["connected"] = client.check_connection()
+        else:
+            ivasms_status["connected"] = False
+
         ivasms_status["last_check"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ivasms_status["cookies_valid"] = bool(cookies)
     except Exception as e:
