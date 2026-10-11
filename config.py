@@ -45,6 +45,13 @@ YESCAPTCHA_KEY = "b2a81640d7b006b1d5c15459ec72366b442af456139860"
 POLL_INTERVAL = 10
 
 # ────────────────────────────────────────────
+#  ELITE-SMS CONFIG (https://elite-sms.com/api)
+# ────────────────────────────────────────────
+ELITE_SMS_ENABLED = True
+ELITE_SMS_URL = "https://elite-sms.com/api"
+ELITE_SMS_API_KEY = "d3a3c3c16dd897f09dfa3778a92d04331a33f876"
+
+# ────────────────────────────────────────────
 #  COOKIES IVASMS (dari browser)
 # ────────────────────────────────────────────
 

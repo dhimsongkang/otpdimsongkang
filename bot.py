@@ -44,8 +44,12 @@ from config import (
     IVASMS_SMS_ENDPOINT,
     POLL_INTERVAL,
     COOKIES,
+    ELITE_SMS_ENABLED,
+    ELITE_SMS_URL,
+    ELITE_SMS_API_KEY,
 )
 from ivasms_scraper import IVASMSClient
+from elite_sms_client import EliteSMSClient
 from cookie_sync import get_fresh_cookies_from_browser
 
 # ────────────────────────────────────────────
@@ -226,40 +230,37 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk /status command."""
-    global active_client
-    await update.message.reply_text("🔄 Checking IVASMS connection...", parse_mode=ParseMode.MARKDOWN)
+    global active_client, active_elite_client
+    await update.message.reply_text("🔄 Checking providers connection...", parse_mode=ParseMode.MARKDOWN)
 
+    # Cek IVASMS
     if not active_client:
         active_client = IVASMSClient(COOKIES, IVASMS_URL)
 
-    is_connected = active_client.check_connection()
-
-    if not is_connected:
+    is_ivasms_ok = active_client.check_connection()
+    if not is_ivasms_ok:
         fresh_c = await get_fresh_cookies_from_browser()
         if fresh_c:
             active_client.update_cookies(fresh_c)
-            is_connected = active_client.check_connection()
+            is_ivasms_ok = active_client.check_connection()
 
-    if is_connected:
-        status_msg = (
-            f"✅ *Status: ONLINE*\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🌐 IVASMS: Connected\n"
-            f"🤖 Bot: Running\n"
-            f"⚡ Interval: `{POLL_INTERVAL}s`\n"
-            f"📨 Total sent: *{stats.total_sent}*\n"
-            f"━━━━━━━━━━━━━━━━━━━━"
-        )
-    else:
-        status_msg = (
-            f"❌ *Status: OFFLINE*\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🌐 IVASMS: Disconnected\n"
-            f"⚠️ Sesi browser perlu diperbarui\n"
-            f"━━━━━━━━━━━━━━━━━━━━"
-        )
+    # Cek Elite-SMS
+    is_elite_ok = False
+    if ELITE_SMS_ENABLED and ELITE_SMS_API_KEY:
+        if not active_elite_client:
+            active_elite_client = EliteSMSClient(ELITE_SMS_API_KEY, ELITE_SMS_URL)
+        is_elite_ok = active_elite_client.check_connection()
 
-    await update.message.reply_text(status_msg, parse_mode=ParseMode.MARKDOWN)
+    status_lines = [
+        f"🤖 *Bot Status: RUNNING*",
+        f"━━━━━━━━━━━━━━━━━━━━",
+        f"🌐 IVASMS: {'✅ Connected' if is_ivasms_ok else '❌ Disconnected'}",
+        f"🌐 Elite-SMS: {'✅ Connected' if is_elite_ok else '❌ Offline/Disabled' if ELITE_SMS_ENABLED else '⚪ Disabled'}",
+        f"⚡ Interval: `{POLL_INTERVAL}s`",
+        f"📨 Total OTP sent: *{stats.total_sent}*",
+        f"━━━━━━━━━━━━━━━━━━━━",
+    ]
+    await update.message.reply_text("\n".join(status_lines), parse_mode=ParseMode.MARKDOWN)
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -382,18 +383,59 @@ async def poll_otp(bot: Bot, client: IVASMSClient, chat_id: str):
         await asyncio.sleep(POLL_INTERVAL)
 
 
-# Global client instance
+async def poll_otp_elite(bot: Bot, client: EliteSMSClient, chat_id: str):
+    """Loop polling OTP dari Elite-SMS API."""
+    logger.info("🚀 Elite-SMS polling started")
+    while True:
+        try:
+            new_sms_list = client.get_new_sms(limit=50)
+            for sms_data in new_sms_list:
+                try:
+                    message = format_otp_message(sms_data)
+                    keyboard = create_keyboard(sms_data, NUMBER_LINK, OWNER_LINK)
+
+                    store_full_message(
+                        sms_data.get("id", "unknown"),
+                        sms_data.get("message", "No message")
+                    )
+
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=message,
+                        parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=keyboard,
+                    )
+
+                    stats.record(sms_data)
+                    logger.info(
+                        f"📤 [Elite-SMS] Sent OTP: {sms_data.get('country_code', '??')} | "
+                        f"{sms_data.get('platform', 'SMS')} | "
+                        f"{sms_data.get('otp', 'N/A')}"
+                    )
+                    await asyncio.sleep(0.5)
+                except Exception as e:
+                    logger.error(f"❌ [Elite-SMS] Failed to send message: {e}")
+        except Exception as e:
+            logger.error(f"❌ [Elite-SMS] Polling error: {e}")
+
+        await asyncio.sleep(POLL_INTERVAL)
+
+
+# Global client instances
 active_client = None
+active_elite_client = None
 
 # ────────────────────────────────────────────
 #  MAIN APPLICATION
 # ────────────────────────────────────────────
 async def post_init(application: Application):
     """Called after bot initialization."""
-    global active_client
+    global active_client, active_elite_client
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info(f"🤖 {BOT_NAME} is starting up...")
     logger.info(f"🌐 IVASMS URL: {IVASMS_URL}")
+    if ELITE_SMS_ENABLED:
+        logger.info(f"🌐 Elite-SMS URL: {ELITE_SMS_URL}")
     logger.info(f"⚡ Poll interval: {POLL_INTERVAL}s")
     logger.info(f"📤 Target chat: {GROUP_CHAT_ID}")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -413,43 +455,57 @@ async def post_init(application: Application):
         except Exception as e:
             logger.warning(f"Browser sync skipped: {e}")
 
-    # Selalu jalankan bot jika COOKIES ada di config.py
+    # Mark existing SMS as seen untuk IVASMS
     if conn_ok or (COOKIES and "ivas_sms_session" in COOKIES):
         if conn_ok:
             logger.info("✅ IVASMS connection verified!")
         else:
-            logger.info("⚠️ IVASMS session loaded from config.py! Memulai bot polling...")
-
-        # Mark existing SMS as seen
+            logger.info("⚠️ IVASMS session loaded from config.py!")
         try:
             existing_count = active_client.mark_initial_as_seen()
-            logger.info(f"📌 Skipping {existing_count} existing SMS")
+            logger.info(f"📌 [IVASMS] Skipping {existing_count} existing SMS")
         except Exception as ex:
-            logger.warning(f"Could not fetch initial SMS: {ex}")
-
-        # Kirim pesan startup ke grup
-        try:
-            startup_msg = (
-                f"🟢 *{BOT_NAME} ONLINE*\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"⏰ `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n"
-                f"⚡ Interval: `{POLL_INTERVAL}s`\n"
-                f"📡 Monitoring IVASMS...\n"
-                f"━━━━━━━━━━━━━━━━━━━━"
-            )
-            await application.bot.send_message(
-                chat_id=GROUP_CHAT_ID,
-                text=startup_msg,
-                parse_mode=ParseMode.MARKDOWN,
-            )
-        except Exception as e:
-            logger.warning(f"⚠️ Could not send startup message: {e}")
-
-        # Start polling task
+            logger.warning(f"Could not fetch initial IVASMS SMS: {ex}")
         asyncio.create_task(poll_otp(application.bot, active_client, GROUP_CHAT_ID))
     else:
-        logger.error("❌ IVASMS connection failed! Check your cookies.")
-        logger.error("💡 Update cookies di config.py lalu restart bot.")
+        logger.warning("⚠️ IVASMS connection not ready.")
+
+    # Inisialisasi Elite-SMS Client (Multi-Provider)
+    if ELITE_SMS_ENABLED and ELITE_SMS_API_KEY:
+        try:
+            active_elite_client = EliteSMSClient(ELITE_SMS_API_KEY, ELITE_SMS_URL)
+            if active_elite_client.check_connection():
+                logger.info("✅ Elite-SMS connection verified!")
+            else:
+                logger.warning("⚠️ Elite-SMS connection status not online, will still poll...")
+            
+            existing_elite = active_elite_client.mark_initial_as_seen()
+            logger.info(f"📌 [Elite-SMS] Skipping {existing_elite} existing SMS")
+            asyncio.create_task(poll_otp_elite(application.bot, active_elite_client, GROUP_CHAT_ID))
+        except Exception as e_err:
+            logger.error(f"❌ Failed to init Elite-SMS client: {e_err}")
+
+    # Kirim pesan startup ke grup
+    try:
+        monitored_sources = ["IVASMS"]
+        if ELITE_SMS_ENABLED and ELITE_SMS_API_KEY:
+            monitored_sources.append("Elite-SMS")
+
+        startup_msg = (
+            f"🟢 *{BOT_NAME} ONLINE*\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"⏰ `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n"
+            f"⚡ Interval: `{POLL_INTERVAL}s`\n"
+            f"📡 Sources: `{', '.join(monitored_sources)}`\n"
+            f"━━━━━━━━━━━━━━━━━━━━"
+        )
+        await application.bot.send_message(
+            chat_id=GROUP_CHAT_ID,
+            text=startup_msg,
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ Could not send startup message: {e}")
 
 
 def main():
