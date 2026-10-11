@@ -101,20 +101,22 @@ async def get_fresh_cookies_from_browser() -> dict:
                 if "Just a moment" not in t:
                     break
 
+                # Log frame URLs if any
+                frame_urls = [f.url for f in page.frames]
+                if i == 0:
+                    logger.info(f"Frames terdeteksi: {len(page.frames)} frame -> {frame_urls}")
+
                 # Cek apakah ada iframe challenge Cloudflare
                 frames = page.frames
                 sitekey = None
                 for frame in frames:
                     try:
-                        # Cari di frame url
                         if "challenges.cloudflare.com" in frame.url or "turnstile" in frame.url:
-                            # Extract sitekey dari frame URL atau elemen
                             import re
                             m = re.search(r"sitekey=([^&]+)", frame.url) or re.search(r"k=([^&]+)", frame.url)
                             if m:
                                 sitekey = m.group(1)
                                 break
-                            # Coba klik checkbox jika ada
                             btn = await frame.query_selector("input[type='checkbox'], #challenge-stage, .ctp-checkbox-label")
                             if btn:
                                 logger.info("👆 Menemukan checkbox Cloudflare di frame, mencoba klik...")
