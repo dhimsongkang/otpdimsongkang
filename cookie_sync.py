@@ -107,21 +107,54 @@ async def get_fresh_cookies_from_browser() -> dict:
                 if "Just a moment" not in t:
                     break
 
-                # Deteksi Turnstile widget di halaman
-                turnstile_container = await page.query_selector("[data-sitekey]")
-                if turnstile_container and YESCAPTCHA_KEY:
-                    sitekey = await turnstile_container.get_attribute("data-sitekey")
+                # Cek apakah ada iframe challenge Cloudflare
+                frames = page.frames
+                sitekey = None
+                for frame in frames:
+                    try:
+                        # Cari di frame url
+                        if "challenges.cloudflare.com" in frame.url or "turnstile" in frame.url:
+                            # Extract sitekey dari frame URL atau elemen
+                            import re
+                            m = re.search(r"sitekey=([^&]+)", frame.url) or re.search(r"k=([^&]+)", frame.url)
+                            if m:
+                                sitekey = m.group(1)
+                                break
+                            # Coba klik checkbox jika ada
+                            btn = await frame.query_selector("input[type='checkbox'], #challenge-stage, .ctp-checkbox-label")
+                            if btn:
+                                logger.info("👆 Menemukan checkbox Cloudflare di frame, mencoba klik...")
+                                await btn.click()
+                                await asyncio.sleep(2)
+                    except:
+                        pass
+
+                if not sitekey:
+                    # Cek elemen data-sitekey di main page
+                    turnstile_container = await page.query_selector("[data-sitekey]")
+                    if turnstile_container:
+                        sitekey = await turnstile_container.get_attribute("data-sitekey")
+
+                if sitekey and YESCAPTCHA_KEY:
                     logger.info(f"🔍 Turnstile SiteKey terdeteksi: {sitekey}")
                     token = await solve_turnstile(page.url, sitekey)
                     if token:
                         await page.evaluate(f"""
-                            const input = document.querySelector('[name="cf-turnstile-response"]');
+                            const input = document.querySelector('[name="cf-turnstile-response"]') || document.querySelector('input[name*="turnstile"]');
                             if (input) {{ input.value = '{token}'; }}
-                            const form = document.querySelector('form');
+                            const form = document.querySelector('form#challenge-form') || document.querySelector('form');
                             if (form) {{ form.submit(); }}
                         """)
                         await asyncio.sleep(4)
                         break
+
+                # Coba klik challenge body jika ada
+                try:
+                    challenge_box = await page.query_selector("#challenge-stage, iframe")
+                    if challenge_box:
+                        await challenge_box.click()
+                except:
+                    pass
 
                 logger.info(f"⏳ Cloudflare challenge terdeteksi, menunggu... ({i+1}/25)")
                 await asyncio.sleep(1)
