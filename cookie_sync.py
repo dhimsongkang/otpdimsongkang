@@ -47,19 +47,25 @@ async def get_fresh_cookies_from_browser() -> dict:
             except Exception as nav_e:
                 logger.warning(f"Browser navigation warning: {nav_e}")
 
+            logger.info(f"Page loaded: {page.url} | Title: {await page.title()}")
+
             # Tunggu bypass Cloudflare jika muncul 'Just a moment...'
-            for _ in range(12):
+            for i in range(15):
                 t = await page.title()
                 if "Just a moment" not in t:
                     break
+                logger.info(f"⏳ Cloudflare challenge terdeteksi, menunggu... ({i+1}/15)")
                 await asyncio.sleep(1)
 
-            # Cek apakah dialihkan ke halaman login
             curr_url = page.url
-            if "/login" in curr_url or await page.query_selector("input[name='email']"):
-                logger.info("🔑 Session expired, melakukan auto-login otomatis...")
+            email_field = await page.query_selector("input[name='email']")
+            if "/login" in curr_url or email_field:
+                logger.info("🔑 Menjalankan auto-login IVASMS...")
                 try:
-                    await page.fill("input[name='email']", IVASMS_EMAIL)
+                    if email_field:
+                        await email_field.fill(IVASMS_EMAIL)
+                    else:
+                        await page.fill("input[name='email']", IVASMS_EMAIL)
                     await page.fill("input[name='password']", IVASMS_PASSWORD)
 
                     # Centang Remember Me
@@ -67,8 +73,7 @@ async def get_fresh_cookies_from_browser() -> dict:
                     if remember_cb and not await remember_cb.is_checked():
                         await remember_cb.check()
 
-                    # Tunggu Cloudflare turnstile menyelesaikan challenge jika ada
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(1)
 
                     # Submit login
                     submit_btn = await page.query_selector("button[type='submit']")
@@ -78,13 +83,12 @@ async def get_fresh_cookies_from_browser() -> dict:
                         await page.keyboard.press("Enter")
 
                     # Tunggu sampai berhasil masuk ke dashboard / portal
-                    for _ in range(15):
+                    for i in range(20):
                         await asyncio.sleep(1)
                         if "/portal" in page.url:
                             logger.info("🎉 Auto-login BERHASIL masuk ke portal!")
                             break
 
-                    # Pastikan berada di halaman sms received
                     if "/portal/sms/received" not in page.url:
                         await page.goto("https://www.ivasms.com/portal/sms/received", timeout=20000)
                         await asyncio.sleep(2)
@@ -92,10 +96,12 @@ async def get_fresh_cookies_from_browser() -> dict:
                 except Exception as login_err:
                     logger.error(f"Error during auto-login: {login_err}")
 
-            raw_cookies = await context.cookies("https://www.ivasms.com")
+            raw_cookies = await context.cookies()
             for c in raw_cookies:
-                cookies_dict[c["name"]] = c["value"]
+                if "ivasms.com" in c.get("domain", ""):
+                    cookies_dict[c["name"]] = c["value"]
 
+            logger.info(f"Current final URL: {page.url} | Title: {await page.title()}")
             await context.close()
 
         logger.info(f"🔄 Auto-synced {len(cookies_dict)} cookies from browser profile!")
