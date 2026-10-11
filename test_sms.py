@@ -2,7 +2,8 @@ import sys
 import logging
 from datetime import datetime, timezone, timedelta
 from config import COOKIES, IVASMS_URL, GROUP_CHAT_ID
-from ivasms_scraper import IVASMSClient, format_otp_message
+from ivasms_scraper import IVASMSClient
+from bot import format_otp_message
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s │ %(levelname)-8s │ %(message)s")
 logger = logging.getLogger("TestScraper")

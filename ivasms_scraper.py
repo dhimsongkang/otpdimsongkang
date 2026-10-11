@@ -435,6 +435,7 @@ class IVASMSClient:
 
         except Exception as e:
             logger.error(f"Error fetching SMS data: {e}")
+            raise e
 
         return all_sms
 

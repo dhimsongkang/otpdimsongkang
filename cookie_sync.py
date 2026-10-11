@@ -135,24 +135,29 @@ async def get_fresh_cookies_from_browser() -> dict:
                     except:
                         pass
 
-                if not sitekey:
-                    # Cek elemen data-sitekey di main page
+                # Cek elemen data-sitekey di main page
+                try:
                     turnstile_container = await page.query_selector("[data-sitekey]")
                     if turnstile_container:
                         sitekey = await turnstile_container.get_attribute("data-sitekey")
+                except:
+                    pass
 
                 if sitekey and YESCAPTCHA_KEY:
                     logger.info(f"🔍 Turnstile SiteKey terdeteksi: {sitekey}")
                     token = await solve_turnstile(page.url, sitekey)
                     if token:
-                        await page.evaluate(f"""
-                            const input = document.querySelector('[name="cf-turnstile-response"]') || document.querySelector('input[name*="turnstile"]');
-                            if (input) {{ input.value = '{token}'; }}
-                            const form = document.querySelector('form#challenge-form') || document.querySelector('form');
-                            if (form) {{ form.submit(); }}
-                        """)
-                        await asyncio.sleep(4)
-                        break
+                        try:
+                            await page.evaluate(f"""
+                                const input = document.querySelector('[name="cf-turnstile-response"]') || document.querySelector('input[name*="turnstile"]');
+                                if (input) {{ input.value = '{token}'; }}
+                                const form = document.querySelector('form#challenge-form') || document.querySelector('form');
+                                if (form) {{ form.submit(); }}
+                            """)
+                            await asyncio.sleep(4)
+                            break
+                        except:
+                            pass
 
                 # Coba klik challenge body jika ada
                 try:
@@ -166,7 +171,12 @@ async def get_fresh_cookies_from_browser() -> dict:
                 await asyncio.sleep(1)
 
             curr_url = page.url
-            email_field = await page.query_selector("input[name='email']")
+            email_field = None
+            try:
+                email_field = await page.query_selector("input[name='email']")
+            except:
+                pass
+
             if "/login" in curr_url or email_field:
                 logger.info("🔑 Menjalankan auto-login IVASMS...")
                 try:
