@@ -222,23 +222,29 @@ def check_bot_running():
         else:
             # Check system processes for bot.py
             if sys.platform == "win32":
-                result = subprocess.run(
-                    ["tasklist", "/FI", "IMAGENAME eq python.exe", "/FO", "CSV"],
-                    capture_output=True, text=True, timeout=5
-                )
+                # Cari proses python yang menjalankan bot.py via powershell
+                cmd = 'powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like \'*bot.py*\' } | Select-Object -ExpandProperty ProcessId"'
+                res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
+                out = res.stdout.strip()
+                if out:
+                    pids = [int(p) for p in out.splitlines() if p.strip().isdigit()]
+                    valid_pids = [p for p in pids if p != os.getpid()]
+                    if valid_pids:
+                        bot_status["running"] = True
+                        bot_status["pid"] = valid_pids[0]
+                        return bot_status
             else:
-                # Linux / CachyOS check
+                # Linux check
                 result = subprocess.run(
                     ["pgrep", "-f", "bot.py"],
                     capture_output=True, text=True, timeout=5
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     pids = result.stdout.strip().splitlines()
-                    # Exclude current process pid
-                    valid_pids = [p for p in pids if int(p) != os.getpid()]
+                    valid_pids = [int(p) for p in pids if int(p) != os.getpid()]
                     if valid_pids:
                         bot_status["running"] = True
-                        bot_status["pid"] = int(valid_pids[0])
+                        bot_status["pid"] = valid_pids[0]
                         return bot_status
             bot_status["running"] = False
             bot_status["pid"] = None
