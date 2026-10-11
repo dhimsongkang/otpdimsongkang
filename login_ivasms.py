@@ -27,17 +27,38 @@ async def main():
     print("=" * 60)
 
     async with async_playwright() as p:
-        # Buka Firefox / Chromium terlihat (headless=False)
-        browser_type = p.firefox
-        context = await browser_type.launch_persistent_context(
-            user_data_dir=USER_DATA_DIR,
-            headless=False,
-            args=["--no-sandbox"]
-        )
+        # Cari binary Firefox resmi di sistem Linux
+        firefox_paths = [
+            "/usr/bin/firefox",
+            "/usr/lib/firefox/firefox",
+            "/usr/bin/firefox-developer-edition",
+        ]
+        executable_path = None
+        for path in firefox_paths:
+            if os.path.exists(path):
+                executable_path = path
+                break
+
+        launch_kwargs = {
+            "user_data_dir": USER_DATA_DIR,
+            "headless": False,
+            "args": ["--no-sandbox"],
+            "firefox_user_prefs": {
+                "dom.webdriver.enabled": False,
+                "useAutomationExtension": False,
+            }
+        }
+        if executable_path:
+            print(f"🦊 Menggunakan Firefox Resmi: {executable_path}")
+            launch_kwargs["executable_path"] = executable_path
+        else:
+            print("🦊 Menggunakan Firefox engine bawaan Playwright")
+
+        context = await p.firefox.launch_persistent_context(**launch_kwargs)
         page = context.pages[0] if context.pages else await context.new_page()
         await page.goto("https://www.ivasms.com/login")
 
-        print("\n⏳ Menunggu Anda login di browser...")
+        print("\n⏳ Menunggu Anda login di browser Firefox...")
         print("💡 Silakan centang Cloudflare dan login dengan email & password Anda di jendela browser yang terbuka.")
         
         # Loop sampai user berada di halaman portal/sms/received atau portal
