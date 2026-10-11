@@ -11,18 +11,28 @@ for name, value in COOKIES.items():
     if value:
         scraper.cookies.set(name, value)
 
-scraper.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0',
-    'Accept': 'text/html, */*; q=0.01',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'X-Requested-With': 'XMLHttpRequest',
-    'Origin': IVASMS_URL,
-    'Referer': f"{IVASMS_URL}/portal/sms/received",
-})
+# Try both common Firefox UAs
+test_uas = [
+    'Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0',
+    'Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0',
+    'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
+]
 
-# First GET the page to get a fresh _token
-r_page = scraper.get(f"{IVASMS_URL}/portal/sms/received", timeout=15)
-print(f"GET page status: {r_page.status_code}")
+for ua in test_uas:
+    scraper.headers.update({
+        'User-Agent': ua,
+        'Accept': 'text/html, */*; q=0.01',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Origin': IVASMS_URL,
+        'Referer': f"{IVASMS_URL}/portal/sms/received",
+    })
+    r_page = scraper.get(f"{IVASMS_URL}/portal/sms/received", timeout=10)
+    print(f"[{ua[:35]}...] GET status: {r_page.status_code}")
+    if r_page.status_code == 200:
+        print(f"✅ BINGO! Cocok dengan UA: {ua}")
+        break
 
 # Find _token
 token_match = re.search(r"f\.append\('_token',\s*[\"']([^\"']+)[\"']\)", r_page.text)
