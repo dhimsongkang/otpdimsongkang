@@ -27,34 +27,26 @@ async def main():
     print("=" * 60)
 
     async with async_playwright() as p:
-        # Cari binary Firefox resmi di sistem Linux
-        firefox_paths = [
-            "/usr/bin/firefox",
-            "/usr/lib/firefox/firefox",
-            "/usr/bin/firefox-developer-edition",
-        ]
-        executable_path = None
-        for path in firefox_paths:
-            if os.path.exists(path):
-                executable_path = path
-                break
-
-        launch_kwargs = {
-            "user_data_dir": USER_DATA_DIR,
-            "headless": False,
-            "args": ["--no-sandbox"],
-            "firefox_user_prefs": {
-                "dom.webdriver.enabled": False,
-                "useAutomationExtension": False,
-            }
-        }
-        if executable_path:
-            print(f"🦊 Menggunakan Firefox Resmi: {executable_path}")
-            launch_kwargs["executable_path"] = executable_path
+        if os.name == "nt":
+            print("🌐 Membuka Microsoft Edge bawaan Windows...")
+            context = await p.chromium.launch_persistent_context(
+                user_data_dir=USER_DATA_DIR,
+                channel="msedge",
+                headless=False,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox"
+                ]
+            )
         else:
-            print("🦊 Menggunakan Firefox engine bawaan Playwright")
+            print("🦊 Membuka Firefox di Linux...")
+            context = await p.firefox.launch_persistent_context(
+                user_data_dir=USER_DATA_DIR,
+                headless=False,
+                args=["--no-sandbox"],
+                firefox_user_prefs={"dom.webdriver.enabled": False}
+            )
 
-        context = await p.firefox.launch_persistent_context(**launch_kwargs)
         page = context.pages[0] if context.pages else await context.new_page()
         await page.goto("https://www.ivasms.com/login")
 

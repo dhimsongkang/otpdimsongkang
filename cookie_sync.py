@@ -66,18 +66,28 @@ async def get_fresh_cookies_from_browser() -> dict:
     cookies_dict = {}
     try:
         async with async_playwright() as p:
-            # Firefox configuration - much less restricted by Cloudflare on Linux
-            context = await p.firefox.launch_persistent_context(
-                user_data_dir=USER_DATA_DIR,
-                headless=os.name != "nt" or os.environ.get("HEADLESS", "false").lower() == "true",
-                user_agent="Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
-                viewport={"width": 1280, "height": 720},
-                firefox_user_prefs={
-                    "dom.webdriver.enabled": False,
-                    "useAutomationExtension": False,
-                    "general.useragent.override": "Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0"
-                }
-            )
+            if os.name == "nt":
+                # Windows: gunakan Microsoft Edge asli bawaan Windows (paling stabil & lolos Cloudflare)
+                context = await p.chromium.launch_persistent_context(
+                    user_data_dir=USER_DATA_DIR,
+                    channel="msedge",
+                    headless=False,
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox",
+                        "--disable-gpu",
+                        "--window-position=-2000,-2000",
+                    ]
+                )
+            else:
+                # Linux fallback
+                context = await p.firefox.launch_persistent_context(
+                    user_data_dir=USER_DATA_DIR,
+                    headless=True,
+                    user_agent="Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
+                    viewport={"width": 1280, "height": 720},
+                    firefox_user_prefs={"dom.webdriver.enabled": False}
+                )
             page = context.pages[0] if context.pages else await context.new_page()
 
             # Remove navigator.webdriver flag
