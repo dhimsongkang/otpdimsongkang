@@ -361,8 +361,8 @@ async def poll_otp(bot: Bot, client: IVASMSClient, chat_id: str):
             consecutive_errors += 1
             logger.error(f"❌ Polling error ({consecutive_errors}/{max_errors}): {e}")
 
-            # Otomatis refresh cookie dari browser jika error berulang
-            if consecutive_errors == 2:
+            # Otomatis refresh cookie dari browser jika ada error sesi
+            if consecutive_errors >= 1:
                 logger.info("🔄 Auto-refreshing cookies from background browser...")
                 try:
                     fresh_c = await get_fresh_cookies_from_browser()

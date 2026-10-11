@@ -301,12 +301,23 @@ class IVASMSClient:
             logger.error(f"Failed to refresh CSRF token: {e}")
         return self.csrf_token or ""
 
-    def get_all_sms(self, date_str: str = None) -> list:
+    def get_all_sms(self, date_str: str = None, date_to: str = None) -> list:
         """
         Ambil semua SMS hari ini secara rekursif melalui endpoint AJAX IVASMS.
+        Mendukung rentang tanggal UTC dan lokal agar SMS saat pergantian hari/zona waktu tidak terlewat.
         """
         if not date_str:
-            date_str = datetime.now().strftime("%Y-%m-%d")
+            # IVASMS menggunakan zona waktu server (UTC / Eropa).
+            # Saat VPS lokal melewati tengah malam (misal WIB UTC+7), tanggal lokal sudah berganti,
+            # tetapi server IVASMS masih tanggal kemarin.
+            # Ambil rentang dari UTC kemarin sampai hari ini (lokal & UTC).
+            from datetime import timezone, timedelta
+            utc_now = datetime.now(timezone.utc)
+            start_date = (utc_now - timedelta(days=1)).strftime("%Y-%m-%d")
+            end_date = datetime.now().strftime("%Y-%m-%d")
+        else:
+            start_date = date_str
+            end_date = date_to or date_str
 
         if not self.csrf_token:
             self._refresh_csrf_token()
@@ -322,8 +333,8 @@ class IVASMSClient:
         # Step 1: POST /portal/sms/received/getsms
         getsms_url = f"{self.base_url}/portal/sms/received/getsms"
         data = {
-            'from': date_str,
-            'to': date_str,
+            'from': start_date,
+            'to': end_date,
             '_token': self.csrf_token or "",
         }
 
@@ -335,7 +346,8 @@ class IVASMSClient:
                 data['_token'] = self.csrf_token or ""
                 r = self.scraper.post(getsms_url, data=data, headers=ajax_headers, timeout=15)
                 if r.status_code != 200:
-                    return []
+                    logger.error(f"getsms failed with HTTP {r.status_code}")
+                    raise ConnectionError(f"getsms HTTP {r.status_code} (sesi invalid/expired)")
 
             # Parse Range entries from getsms response
             # Format: toggleRange('GERMANY 1100', 'GERMANY_1100')
@@ -349,8 +361,8 @@ class IVASMSClient:
                 num_url = f"{self.base_url}/portal/sms/received/getsms/number"
                 num_data = {
                     '_token': self.csrf_token or "",
-                    'start': date_str,
-                    'end': date_str,
+                    'start': start_date,
+                    'end': end_date,
                     'range': range_id,
                 }
                 r_num = self.scraper.post(num_url, data=num_data, headers=ajax_headers, timeout=15)
@@ -371,8 +383,8 @@ class IVASMSClient:
                     sms_url = f"{self.base_url}/portal/sms/received/getsms/number/sms"
                     sms_data = {
                         '_token': self.csrf_token or "",
-                        'start': date_str,
-                        'end': date_str,
+                        'start': start_date,
+                        'end': end_date,
                         'Number': phone_num,
                         'Range': range_id,
                     }
