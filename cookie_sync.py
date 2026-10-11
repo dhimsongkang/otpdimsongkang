@@ -23,17 +23,19 @@ async def get_fresh_cookies_from_browser() -> dict:
     cookies_dict = {}
     try:
         async with async_playwright() as p:
-            # Check environment: on Linux default chromium, on Windows can use msedge/chrome
+            # Stealth settings to bypass Cloudflare Just a moment
             launch_kwargs = {
                 "user_data_dir": USER_DATA_DIR,
                 "headless": os.name != "nt" or os.environ.get("HEADLESS", "false").lower() == "true",
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+                "viewport": {"width": 1280, "height": 720},
                 "args": [
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
                     "--disable-gpu",
+                    "--disable-dev-shm-usage",
                 ]
             }
-            # Only specify channel if available or on Windows
             if os.name == "nt":
                 launch_kwargs["channel"] = "msedge"
                 launch_kwargs["args"].append("--window-position=-2000,-2000")
@@ -41,9 +43,17 @@ async def get_fresh_cookies_from_browser() -> dict:
             context = await p.chromium.launch_persistent_context(**launch_kwargs)
             page = context.pages[0] if context.pages else await context.new_page()
 
-            # Buka halaman received
+            # Remove navigator.webdriver flag
+            await page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+            """)
+
+            # Buka halaman login langsung jika belum ada session
+            target_url = "https://www.ivasms.com/portal/sms/received"
             try:
-                await page.goto("https://www.ivasms.com/portal/sms/received", timeout=30000, wait_until="domcontentloaded")
+                await page.goto(target_url, timeout=45000, wait_until="load")
             except Exception as nav_e:
                 logger.warning(f"Browser navigation warning: {nav_e}")
 
