@@ -486,27 +486,11 @@ async def post_init(application: Application):
         except Exception as e_err:
             logger.error(f"❌ Failed to init Elite-SMS client: {e_err}")
 
-    # Kirim pesan startup ke grup
-    try:
-        monitored_sources = ["IVASMS"]
-        if ELITE_SMS_ENABLED and ELITE_SMS_API_KEY:
-            monitored_sources.append("Elite-SMS")
-
-        startup_msg = (
-            f"🟢 *{BOT_NAME} ONLINE*\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"⏰ `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n"
-            f"⚡ Interval: `{POLL_INTERVAL}s`\n"
-            f"📡 Sources: `{', '.join(monitored_sources)}`\n"
-            f"━━━━━━━━━━━━━━━━━━━━"
-        )
-        await application.bot.send_message(
-            chat_id=GROUP_CHAT_ID,
-            text=startup_msg,
-            parse_mode=ParseMode.MARKDOWN,
-        )
-    except Exception as e:
-        logger.warning(f"⚠️ Could not send startup message: {e}")
+    # Inisialisasi selesai
+    monitored_sources = ["IVASMS"]
+    if ELITE_SMS_ENABLED and ELITE_SMS_API_KEY:
+        monitored_sources.append("Elite-SMS")
+    logger.info(f"✅ Bot initialized successfully. Monitoring sources: {', '.join(monitored_sources)}")
 
 
 def main():
