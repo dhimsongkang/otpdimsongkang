@@ -65,6 +65,7 @@ async def get_fresh_cookies_from_browser() -> dict:
     """
     cookies_dict = {}
     try:
+        async with async_playwright() as p:
             # Firefox configuration - much less restricted by Cloudflare on Linux
             context = await p.firefox.launch_persistent_context(
                 user_data_dir=USER_DATA_DIR,
