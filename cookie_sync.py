@@ -103,3 +103,14 @@ async def get_fresh_cookies_from_browser() -> dict:
         logger.error(f"❌ Failed to auto-sync cookies: {e}")
 
     return cookies_dict
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s │ %(levelname)-8s │ %(message)s")
+    print("🔄 Running cookie sync test...")
+    res = asyncio.run(get_fresh_cookies_from_browser())
+    print(f"Hasil cookie: {len(res)} cookies ditemukan.")
+    if "ivas_sms_session" in res:
+        print("✅ Session IVASMS VALID!")
+    else:
+        print("⚠️ Session belum valid atau perlu login.")

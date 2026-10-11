@@ -27,15 +27,19 @@ async def main():
     print("=" * 60)
 
     async with async_playwright() as p:
-        context = await p.chromium.launch_persistent_context(
-            user_data_dir=USER_DATA_DIR,
-            channel="msedge",
-            headless=False,
-            args=[
+        launch_kwargs = {
+            "user_data_dir": USER_DATA_DIR,
+            "headless": False if os.name == "nt" or os.environ.get("HEADLESS", "false").lower() == "false" else True,
+            "args": [
                 "--disable-blink-features=AutomationControlled",
-                "--no-sandbox"
+                "--no-sandbox",
+                "--disable-gpu"
             ]
-        )
+        }
+        if os.name == "nt":
+            launch_kwargs["channel"] = "msedge"
+
+        context = await p.chromium.launch_persistent_context(**launch_kwargs)
         page = context.pages[0] if context.pages else await context.new_page()
         await page.goto("https://www.ivasms.com/login")
 
