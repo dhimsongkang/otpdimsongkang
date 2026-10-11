@@ -8,6 +8,7 @@
 #  4. POST /portal/sms/received/getsms/number/sms (ambil isi SMS detail)
 # ═══════════════════════════════════════════════════════════════
 
+import os
 import cloudscraper
 import json
 import logging
